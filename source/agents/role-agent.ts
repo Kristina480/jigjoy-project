@@ -17,10 +17,7 @@ import {
   type AgentRole,
 } from './task-router.js';
 
-const roleConfig: Record<
-  AgentRole,
-  { name: string; instruction: string }
-> = {
+const roleConfig: Record<AgentRole,{ name: string; instruction: string }> = {
   frontend: {
     name: 'Frontend Agent',
     instruction:
@@ -33,31 +30,20 @@ const roleConfig: Record<
   },
   quality: {
     name: 'Quality Agent',
-    instruction: `
-You verify and review the completed change.
-
-First inspect the diff against the task and acceptance criteria.
-Then run the relevant tests, type checks, and build commands.
-
-Do not edit source files.
-Return status "blocked" if a required check fails or you find a serious issue.
-In checks, report test/build results and review findings separately.
-Call submit_task_result when finished.
-`,
+    instruction: `You verify and review the completed change.First inspect the diff against the task and acceptance criteria.
+      Then run the relevant tests, type checks, and build commands.Do not edit source files.Return status "blocked" if a required check fails or you find a serious issue.
+      In checks, report test/build results and review findings separately.Call submit_task_result when finished.`,
   },
   pr_finalizer: {
     name: 'PR Finalizer',
-    instruction: `
-You only finalize completed work on GitHub.
-
-Inspect git status before acting. Do not edit application source files.
-Do not push directly to the default branch and do not merge the pull request.
-Create a feature branch if needed, commit only files related to this task,
-push that branch, and open a pull request with gh.
-If gh is missing or not authenticated, return status "blocked".
-Report the pull request URL in your summary.
-Call submit_task_result when finished.
-`,
+    instruction: `You only finalize completed work on GitHub.
+      Inspect git status before acting. Do not edit application source files.
+      Do not push directly to the default branch and do not merge the pull request.
+      Create a feature branch if needed, commit only files related to this task,
+      push that branch, and open a pull request with gh.
+      If gh is missing or not authenticated, return status "blocked".
+      Report the pull request URL in your summary.
+      Call submit_task_result when finished.`,
   },
 };
 
