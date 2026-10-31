@@ -1,4 +1,4 @@
-import { createHuman, type SemanticEvent } from '@mozaik-ai/core';
+import { createHuman } from '@mozaik-ai/core';
 
 import {
   EnvironmentState,
@@ -13,13 +13,15 @@ import { createRoleAgent } from './agents/role-agent.js';
 import { resetTaskRouter } from './agents/task-router.js';
 
 export const DEFAULT_BACKEND_AGENT_COUNT = 2;
-const MAX_BACKEND_AGENT_COUNT = 8;
-const JIGJOY_BACKEND_AGENT_COUNT=3;
+export const DEFAULT_FRONTEND_AGENT_COUNT = 2;
+const MAX_AGENT_POOL_SIZE = 8;
+const JIGJOY_BACKEND_AGENT_COUNT=2;
+const JIGJOY_FRONTEND_AGENT_COUNT=2;
 
 export type AgentSessionOptions = {
   backendAgentCount?: number;
+  frontendAgentCount?: number;
 };
-import { createRuntimeObserver } from './runtime-observer.js';
 
 export type AgentSession = {
   send: (message: string) => void;
@@ -28,7 +30,6 @@ export type AgentSession = {
 export type AgentListeners = {
   onAssistantText: (text: string) => void;
   onFunctionCall?: (name: string) => void;
-  onRuntimeEvent?: (event: SemanticEvent) => void;
 };
 
 initializeRuntime({ state: new EnvironmentState() });
@@ -37,23 +38,49 @@ export function createAgentSession(
   listeners: AgentListeners,
   options: AgentSessionOptions = {},
 ): AgentSession {
+  const configuredAgentCount = String(
+    JIGJOY_BACKEND_AGENT_COUNT ?? '',
+  ).trim();
   const backendAgentCount =
-    options.backendAgentCount ?? JIGJOY_BACKEND_AGENT_COUNT;
+    options.backendAgentCount ??
+    (configuredAgentCount.length > 0
+      ? Number(configuredAgentCount)
+      : DEFAULT_BACKEND_AGENT_COUNT);
+  const environmentFrontendCount = JIGJOY_FRONTEND_AGENT_COUNT;
+  const configuredFrontendCount = String(environmentFrontendCount ?? '').trim();
+  const frontendAgentCount =
+    options.frontendAgentCount ??
+    (configuredFrontendCount.length > 0
+      ? Number(configuredFrontendCount)
+      : DEFAULT_FRONTEND_AGENT_COUNT);
 
   if (
     !Number.isInteger(backendAgentCount) ||
     backendAgentCount < 1 ||
-    backendAgentCount > MAX_BACKEND_AGENT_COUNT
+    backendAgentCount > MAX_AGENT_POOL_SIZE
   ) {
     throw new RangeError(
-      `backendAgentCount must be an integer between 1 and ${MAX_BACKEND_AGENT_COUNT}.`,
+      `backendAgentCount must be an integer between 1 and ${MAX_AGENT_POOL_SIZE}.`,
+    );
+  }
+
+  if (
+    !Number.isInteger(frontendAgentCount) ||
+    frontendAgentCount < 1 ||
+    frontendAgentCount > MAX_AGENT_POOL_SIZE
+  ) {
+    throw new RangeError(
+      `frontendAgentCount must be an integer between 1 and ${MAX_AGENT_POOL_SIZE}.`,
     );
   }
 
   resetTaskRouter();
   const coordinator = createTerminalAgent();
 
-  const frontendAgent = createRoleAgent('frontend');
+  const frontendAgents = Array.from(
+    { length: frontendAgentCount },
+    (_, index) => createRoleAgent('frontend', `Frontend Agent ${index + 1}`),
+  );
   const backendAgents = Array.from({ length: backendAgentCount }, (_, index) =>
     createRoleAgent('backend', `Backend Agent ${index + 1}`),
   );
@@ -69,14 +96,11 @@ export function createAgentSession(
     handlers: [],
   });
 
-  // Joined first so it also sees every participant.joined event.
-  if (listeners.onRuntimeEvent) {
-    join(createRuntimeObserver(listeners.onRuntimeEvent));
-  }
-
   join(user);
   join(coordinator);
-  join(frontendAgent);
+  for (const frontendAgent of frontendAgents) {
+    join(frontendAgent);
+  }
   for (const backendAgent of backendAgents) {
     join(backendAgent);
   }
