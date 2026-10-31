@@ -10,17 +10,13 @@ function CommItem({comm, agents}: {comm: CommView; agents: Record<string, AgentV
 	const to = agents[comm.toId]?.info;
 
 	return (
-		<li className={`comm comm-${comm.kind}`} onClick={() => setOpen(value => !value)}>
+		<li className="comm" onClick={() => setOpen(value => !value)}>
 			<div className="comm-head">
-				<span style={{color: from ? KIND_META[from.kind].color : undefined}}>
-					{from ? KIND_META[from.kind].label : '?'}
-				</span>
+				<b>{from ? KIND_META[from.kind].label : '?'}</b>
 				<span className="arrow">→</span>
-				<span style={{color: to ? KIND_META[to.kind].color : undefined}}>
-					{to ? KIND_META[to.kind].label : '?'}
-				</span>
-				<span className="chip">{KIND_LABEL[comm.kind]}</span>
-				<span className="muted time">{formatTime(comm.at)}</span>
+				<b>{to ? KIND_META[to.kind].label : '?'}</b>
+				<span className="kind">{KIND_LABEL[comm.kind]}</span>
+				<span className="time">{formatTime(comm.at)}</span>
 			</div>
 			<p className={open ? '' : 'clamp'}>{comm.text}</p>
 		</li>

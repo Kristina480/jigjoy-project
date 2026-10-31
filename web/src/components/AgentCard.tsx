@@ -8,9 +8,8 @@ export default function AgentCard({agent}: {agent: AgentView}) {
 	const recent = agent.activity.slice(-4);
 
 	return (
-		<article className={`card card-${agent.status}`} style={{['--accent' as string]: meta.color}}>
+		<article className={`card ${agent.status !== 'idle' ? 'is-active' : ''}`}>
 			<header className="card-head">
-				<span className="dot" />
 				<div className="card-title">
 					<strong>{meta.label}</strong>
 					<small>{agent.info.name}</small>

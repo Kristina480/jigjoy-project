@@ -12,7 +12,7 @@ export default function App() {
 		<div className={`app ${started ? 'started' : ''}`}>
 			<header className="header">
 				<h1>JigJoy Agent</h1>
-				<span className={`status status-${status}`}>{status}</span>
+				<span className={`status status-${status}`}>{{open: 'Connected', connecting: 'Connecting…', closed: 'Offline'}[status]}</span>
 			</header>
 			<main className="workspace">
 				<div className="chat-col">
