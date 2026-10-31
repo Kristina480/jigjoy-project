@@ -1,4 +1,4 @@
-import { createHuman } from '@mozaik-ai/core';
+import { createHuman, type SemanticEvent } from '@mozaik-ai/core';
 
 import {
   EnvironmentState,
@@ -11,6 +11,8 @@ import { createTerminalAgent } from './terminal/agent.js';
 import { createUIUpdater } from './ui-updater.js';
 import { createRoleAgent } from './agents/role-agent.js';
 import { resetTaskRouter } from './agents/task-router.js';
+import { createRuntimeObserver } from './runtime-observer.js';
+
 
 export const DEFAULT_BACKEND_AGENT_COUNT = 2;
 export const DEFAULT_FRONTEND_AGENT_COUNT = 2;
@@ -30,6 +32,7 @@ export type AgentSession = {
 export type AgentListeners = {
   onAssistantText: (text: string) => void;
   onFunctionCall?: (name: string) => void;
+  onRuntimeEvent?: (event: SemanticEvent) => void;
 };
 
 initializeRuntime({ state: new EnvironmentState() });
@@ -95,6 +98,13 @@ export function createAgentSession(
     capabilities: [],
     handlers: [],
   });
+
+
+  // Joined first so it also sees every participant.joined event.
+  if (listeners.onRuntimeEvent) {
+    join(createRuntimeObserver(listeners.onRuntimeEvent));
+  }
+
 
   join(user);
   join(coordinator);
