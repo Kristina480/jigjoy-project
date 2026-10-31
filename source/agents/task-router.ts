@@ -559,18 +559,17 @@ function createFullStackTool(): Tool {
   };
 }
 
-type BackendPlanTask = {
+type AgentPlanTask = {
   key: string;
   task: string;
   acceptanceCriteria: string[];
   dependsOn: string[];
 };
 
-function createBackendPlanTool(): Tool {
+function createRolePlanTool(role: 'frontend' | 'backend'): Tool {
   return {
-    name: 'delegate_backend_tasks',
-    description:
-      'Split backend work into independent tasks and run them on free backend agents. Use dependsOn keys to describe ordering.',
+    name: `delegate_${role}_tasks`,
+    description: `Split ${role} work into independent tasks and run them on free ${role} agents. Use dependsOn keys to describe ordering.`,
     parameters: {
       type: 'object',
       properties: {
@@ -603,13 +602,13 @@ function createBackendPlanTool(): Tool {
     strict: true,
     type: 'function',
     invoke: async (args: {
-      tasks: BackendPlanTask[];
+      tasks: AgentPlanTask[];
       completedDependencies: string[];
     }) => {
       if (args.tasks.length === 0) {
         return JSON.stringify(
-          blockedResult('No backend tasks were provided.', [
-            'Add at least one task to the backend plan.',
+          blockedResult(`No ${role} tasks were provided.`, [
+            `Add at least one task to the ${role} plan.`,
           ]),
         );
       }
@@ -618,8 +617,8 @@ function createBackendPlanTool(): Tool {
 
       if (taskKeys.size !== args.tasks.length) {
         return JSON.stringify(
-          blockedResult('Backend task keys must be unique.', [
-            'Give every backend task a different key.',
+          blockedResult(`${role} task keys must be unique.`, [
+            `Give every ${role} task a different key.`,
           ]),
         );
       }
@@ -637,7 +636,7 @@ function createBackendPlanTool(): Tool {
       if (unknownDependencies.length > 0) {
         const uniqueUnknownDependencies = [...new Set(unknownDependencies)];
         return JSON.stringify(
-          blockedResult('The backend plan has unknown dependencies.', [
+          blockedResult(`The ${role} plan has unknown dependencies.`, [
             ...uniqueUnknownDependencies.map(
               (dependency) => `Unknown dependency: ${dependency}`,
             ),
@@ -645,7 +644,7 @@ function createBackendPlanTool(): Tool {
         );
       }
 
-      const waiting = new Map<string, BackendPlanTask>();
+      const waiting = new Map<string, AgentPlanTask>();
 
       for (const task of args.tasks) {
         waiting.set(task.key, task);
@@ -657,14 +656,14 @@ function createBackendPlanTool(): Tool {
         const readyTasks = [...waiting.values()].filter((task) =>
           task.dependsOn.every((dependency) => completedKeys.has(dependency)),
         );
-        const slots = getFreeAgentCount('backend');
+        const slots = getFreeAgentCount(role);
 
         for (const task of readyTasks.slice(0, slots)) {
           waiting.delete(task.key);
           running.set(
             task.key,
             dispatchTask(
-              'backend',
+              role,
               task.task,
               task.acceptanceCriteria,
               task.dependsOn,
@@ -679,10 +678,10 @@ function createBackendPlanTool(): Tool {
               (dependency) => !completedKeys.has(dependency),
             );
             results[task.key] = blockedResult(
-              `Backend task "${task.key}" could not start.`,
+              `${role} task "${task.key}" could not start.`,
               unmet.length > 0
                 ? unmet.map((dependency) => `Dependency not complete: ${dependency}`)
-                : ['No free backend agent is available.'],
+                : [`No free ${role} agent is available.`],
             );
           }
 
@@ -808,7 +807,8 @@ export function createDelegationTools(): Tool[] {
     createDelegateTool('integration'),
     createDelegateTool('quality'),
     createDelegateTool('pr_finalizer'),
-    createBackendPlanTool(),
+    createRolePlanTool('frontend'),
+    createRolePlanTool('backend'),
     createHelpDelegationTool(),
     createFullStackTool(),
   ];

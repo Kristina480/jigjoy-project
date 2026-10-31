@@ -70,7 +70,10 @@ export function createTerminalAgent() {
       only registered agents with a free slot. Give parallel backend tasks separate file or
       responsibility scopes so they do not edit the same work at the same time.
 
-      For a frontend-only task, call delegate_frontend_task.
+      For a small frontend-only task, call delegate_frontend_task.
+      For a large frontend task, split it into independent subtasks and call
+      delegate_frontend_tasks. Give every subtask a unique key, use dependsOn for prerequisites,
+      and assign parallel tasks separate file or responsibility scopes.
       For a small backend-only task, call delegate_backend_task.
       For a large backend task, split it into independent subtasks and call
       delegate_backend_tasks. Give every subtask a unique key. Use dependsOn to describe

@@ -83,14 +83,19 @@ test.serial('agent availability lists every free Backend instance', (t) => {
   resetTaskRouter();
   registerAgent('backend', 'backend-1');
   registerAgent('backend', 'backend-2');
+  registerAgent('frontend', 'frontend-1');
+  registerAgent('frontend', 'frontend-2');
   registerAgent('integration', 'integration-1');
 
   t.is(getFreeAgentCount('backend'), 2);
+  t.is(getFreeAgentCount('frontend'), 2);
   t.deepEqual(
     getAgentAvailability().map(({ role, status }) => ({ role, status })),
     [
       { role: 'backend', status: 'free' },
       { role: 'backend', status: 'free' },
+      { role: 'frontend', status: 'free' },
+      { role: 'frontend', status: 'free' },
       { role: 'integration', status: 'free' },
     ],
   );
