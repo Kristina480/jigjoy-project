@@ -1,4 +1,4 @@
-import { createHuman } from '@mozaik-ai/core';
+import { createHuman, type SemanticEvent } from '@mozaik-ai/core';
 
 import {
   EnvironmentState,
@@ -19,6 +19,7 @@ const JIGJOY_BACKEND_AGENT_COUNT=3;
 export type AgentSessionOptions = {
   backendAgentCount?: number;
 };
+import { createRuntimeObserver } from './runtime-observer.js';
 
 export type AgentSession = {
   send: (message: string) => void;
@@ -27,6 +28,7 @@ export type AgentSession = {
 export type AgentListeners = {
   onAssistantText: (text: string) => void;
   onFunctionCall?: (name: string) => void;
+  onRuntimeEvent?: (event: SemanticEvent) => void;
 };
 
 initializeRuntime({ state: new EnvironmentState() });
@@ -66,6 +68,11 @@ export function createAgentSession(
     capabilities: [],
     handlers: [],
   });
+
+  // Joined first so it also sees every participant.joined event.
+  if (listeners.onRuntimeEvent) {
+    join(createRuntimeObserver(listeners.onRuntimeEvent));
+  }
 
   join(user);
   join(coordinator);

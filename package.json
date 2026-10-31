@@ -10,7 +10,11 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
-		"test": "prettier --check . && xo && ava"
+		"test": "prettier --check . && xo && ava",
+		"server": "tsx server/index.ts",
+		"web": "npm --prefix web run dev",
+		"dev:all": "concurrently -n server,web -c blue,magenta \"npm:server\" \"npm:web\"",
+		"typecheck": "tsc -p server/tsconfig.json"
 	},
 	"files": [
 		"dist"
@@ -23,7 +27,8 @@
 		"ink-gradient": "^3.0.0",
 		"ink-text-input": "^5.0.1",
 		"meow": "^11.0.0",
-		"react": "^18.2.0"
+		"react": "^18.2.0",
+		"ws": "^8.18.0"
 	},
 	"devDependencies": {
 		"@sindresorhus/tsconfig": "^3.0.1",
@@ -39,7 +44,10 @@
 		"prettier": "^2.8.7",
 		"ts-node": "^10.9.1",
 		"typescript": "^5.0.3",
-		"xo": "^0.53.1"
+		"xo": "^0.53.1",
+		"tsx": "^4.19.0",
+		"@types/ws": "^8.5.12",
+		"concurrently": "^9.0.0"
 	},
 	"ava": {
 		"extensions": {
