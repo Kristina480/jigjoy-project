@@ -3,6 +3,11 @@ export type AgentKind =
 	| 'coordinator'
 	| 'frontend'
 	| 'backend'
+	| 'integration'
+	| 'tester'
+	| 'marketing'
+	| 'designer'
+	| 'devops'
 	| 'quality'
 	| 'pr_finalizer';
 
@@ -25,11 +30,43 @@ export type TaskResult = {
 export type ServerEvent =
 	| {type: 'history'; events: ServerEvent[]}
 	| {type: 'agent.joined'; agent: AgentInfo}
-	| {type: 'agent.status'; agentId: string; status: AgentStatus; tool?: string; at: number}
-	| {type: 'activity'; agentId: string; tone: 'tool' | 'say'; text: string; at: number}
-	| {type: 'comm'; fromId: string; toId: string; kind: CommKind; text: string; at: number}
-	| {type: 'task.dispatched'; taskId: string; agentId: string; task: string; criteria: string[]; at: number}
-	| {type: 'task.result'; taskId: string; agentId: string; result: TaskResult; at: number}
+	| {
+			type: 'agent.status';
+			agentId: string;
+			status: AgentStatus;
+			tool?: string;
+			at: number;
+	  }
+	| {
+			type: 'activity';
+			agentId: string;
+			tone: 'tool' | 'say';
+			text: string;
+			at: number;
+	  }
+	| {
+			type: 'comm';
+			fromId: string;
+			toId: string;
+			kind: CommKind;
+			text: string;
+			at: number;
+	  }
+	| {
+			type: 'task.dispatched';
+			taskId: string;
+			agentId: string;
+			task: string;
+			criteria: string[];
+			at: number;
+	  }
+	| {
+			type: 'task.result';
+			taskId: string;
+			agentId: string;
+			result: TaskResult;
+			at: number;
+	  }
 	| {type: 'error'; message: string; at: number};
 
 export type ClientEvent = {type: 'send'; text: string};

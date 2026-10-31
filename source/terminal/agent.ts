@@ -1,74 +1,80 @@
 import {
-  Agent,
-  type InferenceInput,
-  type SituationContext,
-  type SituationHandler,
-  type SituationProcessor,
-  SituationSpecification,
-  createAgent,
+	Agent,
+	type InferenceInput,
+	type SituationContext,
+	type SituationHandler,
+	type SituationProcessor,
+	SituationSpecification,
+	createAgent,
 } from '@mozaik-ai/core';
 
-import { runLoop } from '../runtime.js';
-import { terminalTools } from './tools.js';
+import {runLoop} from '../runtime.js';
+import {terminalTools} from './tools.js';
 import {
-  createDelegationTools,
-  parseHelpRequestEnvelope,
-  setCoordinatorId,
+	createDelegationTools,
+	parseHelpRequestEnvelope,
+	setCoordinatorId,
 } from '../agents/task-router.js';
 
 class MessageSentSpecification extends SituationSpecification {
-  isSatisfiedBy({ event, participant }: SituationContext): boolean {
-    return (
-      event.type === 'message.sent' &&
-      event.producerId !== participant.getId()
-    );
-  }
+	isSatisfiedBy({event, participant}: SituationContext): boolean {
+		return (
+			event.type === 'message.sent' && event.producerId !== participant.getId()
+		);
+	}
 }
 
 class InferenceProcessor implements SituationProcessor {
-  apply({ event, participant }: SituationContext): void {
-    if (!(participant instanceof Agent)) {
-      return;
-    }
+	apply({event, participant}: SituationContext): void {
+		if (!(participant instanceof Agent)) {
+			return;
+		}
 
-    const { message } = event.payload as { message: string };
-    const helpRequest = parseHelpRequestEnvelope(message);
-    const prompt = helpRequest
-      ? [
-          'A Backend agent has requested a handoff. Evaluate and route the remaining work.',
-          `Original task ID: ${helpRequest.taskId}`,
-          `Request ID: ${helpRequest.requestId}`,
-          `Requester agent ID: ${helpRequest.requesterAgentId}`,
-          `Remaining work: ${helpRequest.remainingWork}`,
-          `Dependencies: ${helpRequest.dependencies.join(', ') || 'None'}`,
-          `Completed dependencies: ${helpRequest.completedDependencies.join(', ') || 'None'}`,
-        ].join('\n')
-      : message;
+		const {message} = event.payload as {message: string};
+		const helpRequest = parseHelpRequestEnvelope(message);
+		const prompt = helpRequest
+			? [
+					'A Backend agent has requested a handoff. Evaluate and route the remaining work.',
+					`Original task ID: ${helpRequest.taskId}`,
+					`Request ID: ${helpRequest.requestId}`,
+					`Requester agent ID: ${helpRequest.requesterAgentId}`,
+					`Remaining work: ${helpRequest.remainingWork}`,
+					`Dependencies: ${helpRequest.dependencies.join(', ') || 'None'}`,
+					`Completed dependencies: ${
+						helpRequest.completedDependencies.join(', ') || 'None'
+					}`,
+			  ].join('\n')
+			: message;
 
-    const input: InferenceInput = {
-      model: 'gpt-5.4',
-      context: participant.getMemory().getContext(),
-      tools: participant.getTools(),
-    };
+		const input: InferenceInput = {
+			model: 'gpt-5.4',
+			context: participant.getMemory().getContext(),
+			tools: participant.getTools(),
+		};
 
-    runLoop(participant.getId(), prompt, input);
-  }
+		runLoop(participant.getId(), prompt, input);
+	}
 }
 
 const messageSentHandler: SituationHandler = {
-  specification: new MessageSentSpecification(),
-  processor: new InferenceProcessor(),
+	specification: new MessageSentSpecification(),
+	processor: new InferenceProcessor(),
 };
 
 export function createTerminalAgent() {
-  const agent = createAgent({
-    name: 'Terminal Agent / Coordinator',
-    capabilities: ['inference'],
-    instruction: `You are the user's task coordinator.
+	const agent = createAgent({
+		name: 'Terminal Agent / Coordinator',
+		capabilities: ['inference'],
+		instruction: `You are the user's task coordinator.
 
-      Before assigning work, call get_agent_availability and use the returned roster to choose
-      only registered agents with a free slot. Give parallel backend tasks separate file or
-      responsibility scopes so they do not edit the same work at the same time.
+      First call list_agent_roles, analyze the user request, and choose the smallest relevant
+      set of roles. Catalog entries are descriptions, not running agents. Use delegate_role_task
+      for tester, marketing, designer, devops, or any catalog role; the router creates agents only
+      when a task is dispatched and reuses free agents. get_agent_availability lists only agents
+      already created; an empty roster does not mean a role is unavailable.
+      Do not delegate to unrelated roles. For simple questions answer directly without a team.
+      Give parallel tasks separate file or responsibility scopes. If capacity is exhausted,
+      wait for existing delegated work to finish or report the limit; do not invent agents.
 
       For a small frontend-only task, call delegate_frontend_task.
       For a large frontend task, split it into independent subtasks and call
@@ -93,23 +99,18 @@ export function createTerminalAgent() {
       result. Do not run Integration or Quality from this help-request response; the original
       task coordinator flow runs those after the requesting Backend reports its final result.
 
-      After all required implementation tasks return status "done", call
-      delegate_integration_task. Include the original task, acceptance criteria, each agent's
-      result summary and changed files, and any shared API contract. If Integration is blocked,
-      send a scoped fix to a free implementation agent and run Integration again. Only after
-      Integration returns status "done", call delegate_quality_task to review the integrated
-      diff and run relevant checks. If Quality reports blockers, send a scoped fix to the
-      responsible implementation agent, run Integration again, and then rerun Quality. Do not
-      create a PR while Integration or Quality reports blockers. Only after Quality returns
-      status "done" with no blockers, call delegate_pr_finalizer_task to create a feature
-      branch, commit, push, and open a PR.
+      Choose follow-up steps according to the requested outcome. Use integration only when
+      independently implemented pieces need to be connected. For code changes select tester
+      or quality for relevant verification; do not claim checks passed unless they actually ran.
+      Respect dependencies and fix blockers before downstream work. Marketing-only tasks do not
+      need integration, code testing, or a PR. Include the complete marketing copy in your reply.
+      Call pr_finalizer only when the user requested a commit, push, or pull request, and only
+      after required checks succeed. Report results and blockers honestly. Include a PR URL
+      only if pr_finalizer returned one.`,
+		tools: [...terminalTools, ...createDelegationTools()],
+		handlers: [messageSentHandler],
+	});
 
-      Report the results and PR URL to the user. Do not claim that a PR exists unless the
-      PR Finalizer returns its URL.`,
-    tools: [...terminalTools, ...createDelegationTools()],
-    handlers: [messageSentHandler],
-  });
-
-  setCoordinatorId(agent.getId());
-  return agent;
+	setCoordinatorId(agent.getId());
+	return agent;
 }

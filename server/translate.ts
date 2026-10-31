@@ -13,6 +13,15 @@ function kindFromName(name: string): AgentKind | undefined {
 	if (n.includes('coordinator')) return 'coordinator';
 	if (n.includes('frontend')) return 'frontend';
 	if (n.includes('backend')) return 'backend';
+	for (const role of [
+		'integration',
+		'tester',
+		'marketing',
+		'designer',
+		'devops',
+	] as const) {
+		if (n.includes(role)) return role;
+	}
 	if (n.includes('quality')) return 'quality';
 	if (n.includes('pr finalizer')) return 'pr_finalizer';
 	return undefined;
@@ -21,7 +30,9 @@ function kindFromName(name: string): AgentKind | undefined {
 function parseArgs(args: string): Record<string, unknown> {
 	try {
 		const value = JSON.parse(args) as unknown;
-		return typeof value === 'object' && value ? (value as Record<string, unknown>) : {};
+		return typeof value === 'object' && value
+			? (value as Record<string, unknown>)
+			: {};
 	} catch {
 		return {};
 	}
@@ -56,13 +67,34 @@ export function createTranslator(emit: (event: ServerEvent) => void) {
 				const coordinator = byKind('coordinator');
 
 				if (producer?.kind === 'user' && coordinator) {
-					emit({type: 'comm', fromId: producer.id, toId: coordinator.id, kind: 'user_message', text: message, at});
+					emit({
+						type: 'comm',
+						fromId: producer.id,
+						toId: coordinator.id,
+						kind: 'user_message',
+						text: message,
+						at,
+					});
 				} else if (producer?.kind === 'coordinator') {
 					const task = parseTaskEnvelope(message);
-					const assignee = task && byKind(task.role);
+					const assignee = task && agents.get(task.targetAgentId);
 					if (task && assignee) {
-						emit({type: 'task.dispatched', taskId: task.taskId, agentId: assignee.id, task: task.task, criteria: task.acceptanceCriteria, at});
-						emit({type: 'comm', fromId: producer.id, toId: assignee.id, kind: 'task', text: task.task, at});
+						emit({
+							type: 'task.dispatched',
+							taskId: task.taskId,
+							agentId: assignee.id,
+							task: task.task,
+							criteria: task.acceptanceCriteria,
+							at,
+						});
+						emit({
+							type: 'comm',
+							fromId: producer.id,
+							toId: assignee.id,
+							kind: 'task',
+							text: task.task,
+							at,
+						});
 					}
 				}
 
@@ -72,7 +104,13 @@ export function createTranslator(emit: (event: ServerEvent) => void) {
 			case 'message_received.started':
 			case 'inference.started':
 			case 'function_call.completed': {
-				if (producer) emit({type: 'agent.status', agentId: producer.id, status: 'thinking', at});
+				if (producer)
+					emit({
+						type: 'agent.status',
+						agentId: producer.id,
+						status: 'thinking',
+						at,
+					});
 				return;
 			}
 
@@ -82,12 +120,29 @@ export function createTranslator(emit: (event: ServerEvent) => void) {
 				const args = parseArgs(call.args);
 
 				if (call.name.startsWith('delegate_')) {
-					emit({type: 'agent.status', agentId: producer.id, status: 'waiting', at});
-					emit({type: 'activity', agentId: producer.id, tone: 'tool', text: `delegating (${call.name.replace('delegate_', '')})`, at});
+					emit({
+						type: 'agent.status',
+						agentId: producer.id,
+						status: 'waiting',
+						at,
+					});
+					emit({
+						type: 'activity',
+						agentId: producer.id,
+						tone: 'tool',
+						text: `delegating (${call.name.replace('delegate_', '')})`,
+						at,
+					});
 					return;
 				}
 
-				emit({type: 'agent.status', agentId: producer.id, status: 'tool', tool: call.name, at});
+				emit({
+					type: 'agent.status',
+					agentId: producer.id,
+					status: 'tool',
+					tool: call.name,
+					at,
+				});
 
 				if (call.name === 'submit_task_result') {
 					const result: TaskResult = {
@@ -98,11 +153,30 @@ export function createTranslator(emit: (event: ServerEvent) => void) {
 						blockers: strings(args['blockers']),
 					};
 					const coordinator = byKind('coordinator');
-					emit({type: 'task.result', taskId: String(args['taskId'] ?? ''), agentId: producer.id, result, at});
+					emit({
+						type: 'task.result',
+						taskId: String(args['taskId'] ?? ''),
+						agentId: producer.id,
+						result,
+						at,
+					});
 					if (coordinator) {
-						emit({type: 'comm', fromId: producer.id, toId: coordinator.id, kind: 'result', text: `[${result.status}] ${result.summary}`, at});
+						emit({
+							type: 'comm',
+							fromId: producer.id,
+							toId: coordinator.id,
+							kind: 'result',
+							text: `[${result.status}] ${result.summary}`,
+							at,
+						});
 					}
-					emit({type: 'activity', agentId: producer.id, tone: 'tool', text: 'submitted task result', at});
+					emit({
+						type: 'activity',
+						agentId: producer.id,
+						tone: 'tool',
+						text: 'submitted task result',
+						at,
+					});
 					return;
 				}
 
@@ -123,7 +197,14 @@ export function createTranslator(emit: (event: ServerEvent) => void) {
 
 				const user = byKind('user');
 				if (producer.kind === 'coordinator' && user) {
-					emit({type: 'comm', fromId: producer.id, toId: user.id, kind: 'reply', text, at});
+					emit({
+						type: 'comm',
+						fromId: producer.id,
+						toId: user.id,
+						kind: 'reply',
+						text,
+						at,
+					});
 				} else {
 					emit({type: 'activity', agentId: producer.id, tone: 'say', text, at});
 				}
