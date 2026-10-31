@@ -3,11 +3,25 @@ import http from 'node:http';
 import {WebSocket, WebSocketServer} from 'ws';
 import {createAgentSession} from '../source/session.js';
 import type {ClientEvent, ServerEvent} from '../shared/events.js';
+import {createTranslator} from './translate.js';
 
 const PORT = Number(process.env['PORT'] ?? 3001);
+const MAX_HISTORY = 1500;
 const clients = new Set<WebSocket>();
 
-function broadcast(event: ServerEvent) {
+// Roster events are kept forever; everything else is capped. Both are replayed
+// to a browser that connects (or reloads) mid-conversation.
+const roster: ServerEvent[] = [];
+const history: ServerEvent[] = [];
+
+function emit(event: ServerEvent) {
+	if (event.type === 'agent.joined') {
+		roster.push(event);
+	} else {
+		history.push(event);
+		if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+	}
+
 	const data = JSON.stringify(event);
 	for (const client of clients) {
 		if (client.readyState === WebSocket.OPEN) client.send(data);
@@ -19,17 +33,16 @@ if (!process.env['OPENAI_API_KEY']) {
 }
 
 // The Mozaik runtime keeps global state (one coordinator id, one runtime),
-// so we create ONE shared session and broadcast its output to every client.
+// so there is ONE shared session; its events are broadcast to every client.
 const session = createAgentSession({
-	onAssistantText: text => broadcast({type: 'assistant', text}),
-	onFunctionCall: name => broadcast({type: 'tool', name}),
+	onAssistantText() {},
+	onRuntimeEvent: createTranslator(emit),
 });
 
-// Agent failures (bad key, network...) surface as unhandled rejections.
 process.on('unhandledRejection', reason => {
 	const message = reason instanceof Error ? reason.message : String(reason);
 	console.error('[server] unhandled rejection:', reason);
-	broadcast({type: 'error', message});
+	emit({type: 'error', message, at: Date.now()});
 });
 
 const server = http.createServer((req, res) => {
@@ -47,7 +60,7 @@ const wss = new WebSocketServer({server, path: '/ws'});
 
 wss.on('connection', socket => {
 	clients.add(socket);
-	socket.send(JSON.stringify({type: 'ready'} satisfies ServerEvent));
+	socket.send(JSON.stringify({type: 'history', events: [...roster, ...history]} satisfies ServerEvent));
 
 	socket.on('message', raw => {
 		try {

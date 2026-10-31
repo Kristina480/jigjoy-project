@@ -1,10 +1,6 @@
-import type {ChatMessage} from '../hooks/useAgentSocket';
+import type {ChatMessage} from '../state/store';
 
 export default function MessageRow({message}: {message: ChatMessage}) {
-	if (message.role === 'tool') {
-		return <div className="row row-tool">· {message.content}</div>;
-	}
-
 	if (message.role === 'error') {
 		return <div className="row row-error">⚠ {message.content}</div>;
 	}
@@ -13,7 +9,7 @@ export default function MessageRow({message}: {message: ChatMessage}) {
 
 	return (
 		<div className={`row ${isUser ? 'row-user' : 'row-assistant'}`}>
-			<div className="label">{isUser ? 'You' : 'Agent'}</div>
+			<div className="label">{isUser ? 'You' : 'Coordinator'}</div>
 			<div className="bubble">{message.content}</div>
 		</div>
 	);
