@@ -3,7 +3,7 @@ import {Box, Text, useApp, useInput} from 'ink';
 import TextInput from 'ink-text-input';
 import BigText from 'ink-big-text';
 import Gradient from 'ink-gradient';
-import { createAgentSession } from './session.js';
+import {createAgentSession} from './session.js';
 
 type ChatMessage = {
 	id: number;
@@ -28,6 +28,10 @@ export default function App() {
 				onAssistantText: (text: string) => {
 					setIsThinking(false);
 					appendMessage('assistant', text);
+				},
+				onError: (text: string) => {
+					setIsThinking(false);
+					appendMessage('system', `Error: ${text}`);
 				},
 				onFunctionCall: (name: string) => {
 					appendMessage('system', `calling tool: ${name}`);

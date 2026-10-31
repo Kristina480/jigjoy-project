@@ -1,17 +1,10 @@
+import {ROLE_META} from '../../../shared/agent-metadata';
 import type {AgentKind, AgentStatus} from '../../../shared/events';
 
 export const KIND_META: Record<AgentKind, {label: string; color: string; order: number}> = {
-	coordinator: {label: 'Coordinator', color: '#a855f7', order: 0},
-	frontend: {label: 'Frontend', color: '#3b82f6', order: 1},
-	backend: {label: 'Backend', color: '#22c55e', order: 2},
-	integration: {label: 'Integration', color: '#06b6d4', order: 3},
-	tester: {label: 'Tester', color: '#f59e0b', order: 4},
-	marketing: {label: 'Marketing', color: '#f97316', order: 5},
-	designer: {label: 'Designer', color: '#d946ef', order: 6},
-	devops: {label: 'DevOps', color: '#14b8a6', order: 7},
-	quality: {label: 'Quality', color: '#eab308', order: 3},
-	pr_finalizer: {label: 'PR Finalizer', color: '#ec4899', order: 4},
-	user: {label: 'You', color: '#8a92a6', order: 5},
+  ...ROLE_META,
+  coordinator: {label: 'Coordinator', color: '#a855f7', order: 0},
+  user: {label: 'You', color: '#8a92a6', order: 51},
 };
 
 export function statusLabel(status: AgentStatus, tool?: string): string {

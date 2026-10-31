@@ -4,6 +4,8 @@ import {
 	EnvironmentState,
 	initializeRuntime,
 	join,
+	leave,
+	resolveParticipant,
 	sendMessage,
 } from './runtime.js';
 
@@ -30,6 +32,7 @@ export type AgentSession = {
 export type AgentListeners = {
 	onAssistantText: (text: string) => void;
 	onFunctionCall?: (name: string) => void;
+	onError?: (text: string) => void;
 	onRuntimeEvent?: (event: SemanticEvent) => void;
 };
 
@@ -50,6 +53,7 @@ export function createAgentSession(
 			frontend:
 				options.frontendAgentCount ?? Math.min(2, options.maxAgents ?? 8),
 		},
+		id => leave(resolveParticipant(id)),
 	);
 	const coordinator = createTerminalAgent();
 

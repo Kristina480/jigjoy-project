@@ -8,18 +8,34 @@ import {
 	createAgent,
 } from '@mozaik-ai/core';
 
-import {runLoop} from '../runtime.js';
+import {runLoop, resolveParticipant} from '../runtime.js';
 import {terminalTools} from './tools.js';
 import {
-	createDelegationTools,
+	createCoordinatorTools,
+	getAgentAvailability,
 	parseHelpRequestEnvelope,
 	setCoordinatorId,
+	recordProjectMessage,
 } from '../agents/task-router.js';
 
 class MessageSentSpecification extends SituationSpecification {
 	isSatisfiedBy({event, participant}: SituationContext): boolean {
-		return (
-			event.type === 'message.sent' && event.producerId !== participant.getId()
+		if (
+			event.type !== 'message.sent' ||
+			event.producerId === participant.getId()
+		)
+			return false;
+		const manifest = resolveParticipant(event.producerId).getManifest();
+		if (manifest.role === 'human' && manifest.name === 'User') return true;
+		const {message} = event.payload as {message: string};
+		const help = parseHelpRequestEnvelope(message);
+		return Boolean(
+			help &&
+				help.requesterAgentId === event.producerId &&
+				getAgentAvailability().some(
+					agent =>
+						agent.agentId === event.producerId && agent.role === 'backend',
+				),
 		);
 	}
 }
@@ -52,7 +68,15 @@ class InferenceProcessor implements SituationProcessor {
 			tools: participant.getTools(),
 		};
 
-		runLoop(participant.getId(), prompt, input);
+		// Handoffs must run while the main coordinator is waiting for its worker.
+		void runLoop(
+			participant.getId(),
+			prompt,
+			input,
+			helpRequest
+				? {concurrent: true, isolated: true}
+				: {onStart: () => recordProjectMessage(message)},
+		).catch(() => {});
 	}
 }
 
@@ -65,49 +89,69 @@ export function createTerminalAgent() {
 	const agent = createAgent({
 		name: 'Terminal Agent / Coordinator',
 		capabilities: ['inference'],
-		instruction: `You are the user's task coordinator.
+		instruction: `You are JigJoy's coordinator. Turn a user request into the smallest capable team.
 
-      First call list_agent_roles, analyze the user request, and choose the smallest relevant
-      set of roles. Catalog entries are descriptions, not running agents. Use delegate_role_task
-      for tester, marketing, designer, devops, or any catalog role; the router creates agents only
-      when a task is dispatched and reuses free agents. get_agent_availability lists only agents
-      already created; an empty roster does not mean a role is unavailable.
-      Do not delegate to unrelated roles. For simple questions answer directly without a team.
-      Give parallel tasks separate file or responsibility scopes. If capacity is exhausted,
-      wait for existing delegated work to finish or report the limit; do not invent agents.
+      Call get_workspace_info first. Use its actual root, OS, shell and Node version.
+      When the user names a specification file, call load_project_requirements and read
+      its full result before submitting any plan. Do not batch loading with delegation.
+      If the user asks for a plan only, return that plan without implementing or creating
+      workers. Run implementation only when the user requests it.
+      Resolve output folders from the user's requirements, for example hidden/box-office,
+      relative to that root. Never guess the user's filesystem path. Preserve the full
+      supplied specification; workers receive the original brief automatically.
+      Discover the 50 specialist roles with list_agent_roles and consult get_team_guidance
+      when useful. Briefly explain which roles you selected and what can run concurrently.
+      Submit the WHOLE task graph in ONE delegate_team_plan call, including follow-up
+      implementation and verification. This is also the interface for a single task.
+      Do not call a one-task plan, wait, then call another when tasks are independent.
+      Use dependsOn ONLY for a real input/output or verification dependency. Independent
+      tasks must have empty dependsOn arrays (or only the same actual prerequisite).
+      Never add ordering just because one role is listed before another. Do not invent
+      unrelated work merely to make the dashboard busy.
 
-      For a small frontend-only task, call delegate_frontend_task.
-      For a large frontend task, split it into independent subtasks and call
-      delegate_frontend_tasks. Give every subtask a unique key, use dependsOn for prerequisites,
-      and assign parallel tasks separate file or responsibility scopes.
-      For a small backend-only task, call delegate_backend_task.
-      For a large backend task, split it into independent subtasks and call
-      delegate_backend_tasks. Give every subtask a unique key. Use dependsOn to describe
-      prerequisites between subtasks; do not start dependent work before its prerequisites
-      return status "done". The router schedules ready tasks across the free Backend agents.
-      For an independent full-stack task, define one API contract and call
-      delegate_frontend_and_backend.
-      Do not start Integration while a required implementation task is still blocked. Resolve
-      the blocker with a suitable free agent or report clearly that the task cannot proceed.
+      For UI design implementation, designer proposes the design while frontend can inspect
+      existing components and integration points concurrently (read-only). Implementation
+      then depends on both findings. Verification depends on implementation.
+      If only a design proposal is requested, use designer alone.
+      For a full-stack feature, establish an API contract once, then frontend and backend
+      work concurrently on separate file scopes. Integration and testing wait for both.
+      Copy or launch planning can run alongside technical work if requested and independent.
+      A small cohesive change may use fullstack instead of separate frontend/backend.
+      Choose tester OR quality for ordinary verification; add specialists only when needed.
 
-      When you receive a structured Backend help request, evaluate the remaining work and its
-      dependencies. Call get_agent_availability, then use delegate_remaining_backend_task with
-      the request ID and requester agent ID so that another free Backend agent receives the
-      handoff. Pass the dependency lists from the request unchanged; the router rejects the
-      handoff if any prerequisite is unfinished or no other Backend agent is free. Always call
-      this tool so the requesting Backend receives either the helper's result or a clear blocked
-      result. Do not run Integration or Quality from this help-request response; the original
-      task coordinator flow runs those after the requesting Backend reports its final result.
+      For a long HTTP API specification, use api_designer for stable shared contracts,
+      backend workers with separate HTTP/auth and domain file scopes, tester for black-box
+      HTTP cases, then security/quality review. Keep tightly coupled inventory, discounts,
+      holds and FIFO state transitions in one domain scope. Testing can be written from the
+      contract concurrently; executing it waits for implementation. No frontend is needed.
+      The generated project must be standalone, use the exact output path and environment
+      variables from the brief, and be tested using its own install/build/start commands.
+      Prefer write_file/read_file/list_files over shell commands for source and JSON files.
+      Commands run in the reported shell (cmd.exe on Windows); do not use Bash heredocs
+      or Unix-only tools there. For a server use start_process with a separate test PORT,
+      inspect get_process_output, verify endpoints with http_request, and stop_process.
+      Never call npm start through the blocking run_command tool. Do not claim that the
+      factory successfully generated an app until the actual files and checks exist.
 
-      Choose follow-up steps according to the requested outcome. Use integration only when
-      independently implemented pieces need to be connected. For code changes select tester
-      or quality for relevant verification; do not claim checks passed unless they actually ran.
-      Respect dependencies and fix blockers before downstream work. Marketing-only tasks do not
-      need integration, code testing, or a PR. Include the complete marketing copy in your reply.
-      Call pr_finalizer only when the user requested a commit, push, or pull request, and only
-      after required checks succeed. Report results and blockers honestly. Include a PR URL
-      only if pr_finalizer returned one.`,
-		tools: [...terminalTools, ...createDelegationTools()],
+      Every plan task needs a unique key, concrete acceptanceCriteria, a role, a clear file
+      or responsibility scope, and dependsOn keys. The router enforces dependency order,
+      capacity and worker reuse; prerequisite results are passed automatically. If a task
+      is blocked, do not claim its dependent work succeeded. Run a scoped repair plan only
+      after reviewing the blocker. Reuse completed checks unless new changes require more.
+      Catalog descriptions are not active agents. An empty availability roster does not
+      mean catalog roles cannot be created. Respect capacity limits reported by the router.
+
+      On a structured Backend help request, call delegate_remaining_backend_task with the
+      request ID, requester ID and unchanged dependency lists. This separate handoff turn
+      must resolve the waiting helper request; do not run unrelated integration or review.
+      Give helper tasks nonoverlapping files. Main task execution resumes after the result.
+
+      For simple questions answer directly without agents. For content requests include the
+      complete content in your final reply. Do not claim external research, image generation,
+      deployments, tests or improvements without actual tools and evidence. Put pr_finalizer
+      in a plan only if the user asked for a commit, push or PR, and after required checks.
+      Report outcomes, checks and blockers honestly; include a PR URL only if returned.`,
+		tools: [...terminalTools, ...createCoordinatorTools()],
 		handlers: [messageSentHandler],
 	});
 

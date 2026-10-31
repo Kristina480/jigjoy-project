@@ -1,0 +1,44 @@
+{
+  "name": "Box Office API",
+  "root": "hidden/box-office/",
+  "runtime": {
+    "node": "22",
+    "memoryOnly": true,
+    "networkCallsAllowed": false,
+    "env": {
+      "PORT": { "required": true, "type": "string", "description": "HTTP listen port" },
+      "HOLD_SECONDS": { "required": false, "default": 600, "type": "integer", "description": "Hold lifetime in seconds" }
+    }
+  },
+  "errorShape": { "error": "string" },
+  "validationPrecedence": [401, 403, 400, 404, 403, 409, 422],
+  "routes": [
+    { "method": "POST", "path": "/users", "auth": "public", "success": 201 },
+    { "method": "POST", "path": "/sessions", "auth": "public", "success": 200 },
+    { "method": "GET", "path": "/me", "auth": "bearer", "role": "any", "success": 200 },
+    { "method": "POST", "path": "/events", "auth": "bearer", "role": "organizer", "success": 201 },
+    { "method": "GET", "path": "/events", "auth": "public", "success": 200 },
+    { "method": "GET", "path": "/events/:id", "auth": "public", "success": 200 },
+    { "method": "POST", "path": "/events/:id/cancel", "auth": "bearer", "role": "organizer", "success": 200 },
+    { "method": "POST", "path": "/orders", "auth": "bearer", "role": "customer", "success": 201 },
+    { "method": "POST", "path": "/orders/:id/pay", "auth": "bearer", "role": "customer", "success": 200 },
+    { "method": "POST", "path": "/orders/:id/cancel", "auth": "bearer", "role": "customer", "success": 200 },
+    { "method": "GET", "path": "/orders/:id", "auth": "bearer", "role": "any", "success": 200 },
+    { "method": "GET", "path": "/me/orders", "auth": "bearer", "role": "customer", "success": 200 },
+    { "method": "POST", "path": "/events/:id/discounts", "auth": "bearer", "role": "organizer", "success": 201 },
+    { "method": "POST", "path": "/events/:id/waitlist", "auth": "bearer", "role": "customer", "success": 201 },
+    { "method": "GET", "path": "/me/waitlist", "auth": "bearer", "role": "customer", "success": 200 },
+    { "method": "GET", "path": "/events/:id/report", "auth": "bearer", "role": "organizer", "success": 200 }
+  ],
+  "notes": [
+    "All request/response bodies are JSON.",
+    "Unknown route returns 404 with {\"error\":\"...\"}.",
+    "Emails and discount codes are matched case-insensitively.",
+    "Discount codes are stored uppercase.",
+    "Held order expiration may be lazy but every response must reflect it.",
+    "Customer cap is 6 tickets per event across held and paid orders.",
+    "Waitlist service is strict FIFO with head-of-line blocking.",
+    "Waitlist-created orders never use discount codes.",
+    "Report sums paid orders for gross/discount/net and refunded orders for refundedCents."
+  ]
+}

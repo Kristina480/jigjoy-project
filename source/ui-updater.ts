@@ -1,3 +1,4 @@
+import {getCoordinatorId} from './agents/task-router.js';
 import {
 	type FunctionCallItem,
 	type ModelMessageItem,
@@ -11,6 +12,7 @@ import {
 export type UIUpdaterListeners = {
 	onAssistantText: (text: string) => void;
 	onFunctionCall?: (name: string) => void;
+	onError?: (text: string) => void;
 };
 
 class FunctionCallStartedSpecification extends SituationSpecification {
@@ -46,6 +48,12 @@ class ModelAnswerProcessor implements SituationProcessor {
 	}
 }
 
+class RunFailureSpecification extends SituationSpecification {
+	isSatisfiedBy({event}: SituationContext): boolean {
+		return event.type === 'agent.run.failed';
+	}
+}
+
 export function createUIUpdater(listeners: UIUpdaterListeners) {
 	const functionCallStartedHandler: SituationHandler = {
 		specification: new FunctionCallStartedSpecification(),
@@ -60,6 +68,21 @@ export function createUIUpdater(listeners: UIUpdaterListeners) {
 	return createHuman({
 		name: 'UI Updater',
 		capabilities: [],
-		handlers: [functionCallStartedHandler, modelAnswerHandler],
+		handlers: [
+			functionCallStartedHandler,
+			modelAnswerHandler,
+			{
+				specification: new RunFailureSpecification(),
+				processor: {
+					apply({event}: SituationContext) {
+						const {message} = event.payload as {message: string};
+						if (event.producerId === getCoordinatorId()) {
+							if (listeners.onError) listeners.onError(message);
+							else listeners.onAssistantText(`Error: ${message}`);
+						} else listeners.onFunctionCall?.(`Agent failed: ${message}`);
+					},
+				},
+			},
+		],
 	});
 }

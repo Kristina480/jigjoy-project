@@ -5,7 +5,7 @@
 	"bin": "dist/cli.js",
 	"type": "module",
 	"engines": {
-		"node": ">=18"
+		"node": ">=18.19"
 	},
 	"scripts": {
 		"build": "tsc",
@@ -14,7 +14,9 @@
 		"server": "tsx server/index.ts",
 		"web": "npm --prefix web run dev",
 		"dev:all": "concurrently -n server,web -c blue,magenta \"npm:server\" \"npm:web\"",
-		"typecheck": "tsc -p server/tsconfig.json"
+		"typecheck": "tsc -p server/tsconfig.json",
+		"test:agents": "ava",
+		"check": "npm run build && npm run typecheck && npm run test:agents && npm --prefix web run build"
 	},
 	"files": [
 		"dist"

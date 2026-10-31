@@ -1,3 +1,4 @@
+import {createConcurrentRunLoop} from './concurrent-loop.js';
 import {defineRuntime, RuntimeState} from '@mozaik-ai/core';
 
 export class EnvironmentState extends RuntimeState {}
@@ -10,5 +11,6 @@ export const {
 	leave,
 	sendMessage,
 	sendEvent,
-	runLoop,
 } = defineRuntime<EnvironmentState>();
+
+export const runLoop = createConcurrentRunLoop(resolveRuntime);

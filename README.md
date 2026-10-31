@@ -1,180 +1,233 @@
-# CLI Agent Starter
+# JigJoy
 
-A **starter template** for building **terminal CLI agents**: an [Ink](https://github.com/vadimdemedes/ink) chat UI wired to [**`@mozaik-ai/core`**](https://www.npmjs.com/package/@mozaik-ai/core), a TypeScript runtime for **collaborative, event-driven agents**. Humans, agents, and observers join one **runtime**; semantic events fan out to situation handlers so you can compose reactive behaviors without a central scheduler.
+### One brief. The right team. Work in motion.
 
-Fork or copy this repo, rename the package, add tools and participants, and ship your own agent-backed CLI.
+**JigJoy turns a request into a working AI team: it selects specialists, starts independent work in parallel, passes results between agents, and shows the whole process live.**
 
-![CLI Agent Starter — terminal chat UI](public/cli-agent.png)
+50 specialist roles. One coordinator. Only the agents the task needs.
 
----
+## The pitch
 
-## Use this template
+Building a feature crosses disciplines: design, frontend, backend, testing, sometimes launch copy. JigJoy gives that work an explicit plan, clear ownership, and visible handoffs.
 
-This repository is meant to be **copied into a new project** so you keep a **clean git history**.
+Ask for the outcome. Watch the team assemble. Follow the work from brief to verified result.
+
+## What you can see in the demo
+
+- **A team assembled on demand.** The coordinator chooses from 50 roles; unused specialists never join the session.
+- **Real parallel work.** Independent agents can make model requests and run tools concurrently. The dashboard shows how many specialists have active tasks.
+- **Useful handoffs.** Frontend receives the designer's actual specification. Integration receives implementation results. Verification waits for the work it checks.
+- **Visible accountability.** Each agent has its own task, acceptance criteria, activity, changed files, checks, and blockers.
+- **Failures that stay local.** A blocked prerequisite stops its dependents. One agent's failure does not clear another agent's live status.
+
+## Try it
+
+**Prerequisites:** Node.js 18.19+ (Node 22 recommended), npm, and an OpenAI API key with access to the configured `gpt-5.4` model. API calls use your provider account.
 
 ```bash
-npx degit jigjoy-ai/cli-agent-starter my-cli-agent
-cd my-cli-agent
-git init
-git add .
-git commit -m "Initial commit"
-npm install
+git clone https://github.com/Kristina480/jigjoy-project.git
+cd jigjoy-project
+npm ci
+npm --prefix web ci
 ```
 
-Replace `jigjoy-ai/cli-agent-starter` with your fork or the published template URL if it moves. Replace `my-cli-agent` with your project folder name.
+Create `.env` in the project root:
 
-Then customize:
+```env
+OPENAI_API_KEY=your_api_key_here
+```
 
-- Set **`name`** (and optionally **`bin`**) in [`package.json`](package.json).
-- Adjust branding and copy in [`source/cli.tsx`](source/cli.tsx), [`source/app.tsx`](source/app.tsx), and this README.
+Then launch both services:
 
-### Alternative: GitHub “Use this template”
+```bash
+npm run dev:all
+```
 
-If you enable **Template repository** in the repo settings on GitHub, **Use this template** creates a new repository whose **first commit** is the template snapshot—also a straightforward way to start without inheriting long unrelated history.
+Open **http://localhost:5173**. The backend runs on **http://localhost:3001** and exposes `/health` and `/ws`.
 
----
+> Applying the downloaded upgrade? Copy its files into your existing checkout first. The ZIP contains changed files, not a complete repository. Instructions: [docs/PRIMENA_IZMENA.txt](docs/PRIMENA_IZMENA.txt).
 
-## What this template includes
+### Give the team a real brief
 
-Built against **`@mozaik-ai/core` ^4.0.5** (see [`package.json`](package.json)).
+```text
+Build a product landing page and a newsletter signup endpoint.
+Use separate frontend and backend file scopes and agree on the API contract first.
+Have a designer define the visual direction while a copywriter drafts the page copy.
+Run independent work concurrently. Integrate the result, then test it.
+Do not publish, deploy, commit, or open a PR.
+```
 
-| Concept | Where it lives |
-| --- | --- |
-| **`defineRuntime`** — shared runtime, events, and `runLoop` | [`source/runtime.ts`](source/runtime.ts) |
-| **`createAgent`** — instruction, tools, situation handlers | [`source/terminal/agent.ts`](source/terminal/agent.ts) |
-| **`createHuman`** observer — `model.answer` / `function_call.started` → UI | [`source/ui-updater.ts`](source/ui-updater.ts) |
-| **`runLoop`** — context update, inference, and tool execution | [`source/terminal/agent.ts`](source/terminal/agent.ts): `message.sent` handler |
-| Declarative **`Tool`** definitions | [`source/terminal/tools.ts`](source/terminal/tools.ts) |
+Use a fresh server session for a clean demo roster. Tell JigJoy the target project path and relevant constraints when the code to change is outside the current working directory.
 
-The Ink UI does **not** call OpenAI directly. It calls `session.send(message)`, which publishes a `message.sent` event; the **UI updater** listens for assistant text and tool notifications and updates the UI through callbacks.
-
----
-
-## Architecture
+## How the team works
 
 ```mermaid
-flowchart LR
-  subgraph ui [Ink UI]
-    App[app.tsx]
-  end
-
-  subgraph mozaik [Mozaik runtime]
-    Runtime((defineRuntime))
-    Agent[Terminal Agent]
-    Obs[UI updater]
-    User[Human user]
-  end
-
-  Tools[terminal tools / run_command]
-  OAI[OpenAI via runLoop]
-
-  App -->|session.send| User
-  User -->|sendMessage| Runtime
-  Agent -->|join| Runtime
-  Obs -->|join| Runtime
-  User -->|join| Runtime
-  Runtime -->|message.sent| Agent
-  Agent -->|runLoop| OAI
-  Agent --> Tools
-  Runtime -->|function_call.started / model.answer| Obs
-  Obs -->|callbacks| App
+flowchart TD
+    Brief["Your brief"] --> Coordinator["Coordinator: select and plan"]
+    Coordinator --> Design["Design specification"]
+    Coordinator --> Contract["API contract"]
+    Coordinator --> Copy["Page copy"]
+    Design --> Frontend["Frontend"]
+    Contract --> Frontend
+    Contract --> Backend["Backend"]
+    Copy --> Frontend
+    Frontend --> Integration["Integration"]
+    Backend --> Integration
+    Integration --> Verify["Testing and review"]
+    Verify --> Result["Result, checks and blockers"]
 ```
 
-**Flow in plain language**
+Design, contract work, and copy can start together. Once the contract is ready, backend can proceed while frontend waits for the inputs it actually needs. Integration and verification start after their prerequisites succeed.
 
-1. **`createAgentSession`** calls **`initializeRuntime`**, then **`join`**s a human user, the terminal agent, and a UI observer. User messages go through **`sendMessage(message, user.getId())`**.
-2. The terminal agent is a **`createAgent`** participant. On **`message.sent`** from someone else it calls **`runLoop`** with the agent’s memory context and tools. Tool execution and the follow-up inference live inside the loop.
-3. The UI updater is a **`createHuman`** observer. It handles **`model.answer`** to surface assistant text to Ink, and **`function_call.started`** to show which tool was invoked.
+The coordinator submits a complete task graph through `delegate_team_plan`. Each task specifies:
 
----
+| Field                | Purpose                                             |
+| -------------------- | --------------------------------------------------- |
+| `key`                | A unique task identifier inside the plan            |
+| `role`               | The specialist responsible for the work             |
+| `task`               | Concrete work and file or responsibility boundaries |
+| `acceptanceCriteria` | What successful completion means                    |
+| `dependsOn`          | Tasks whose successful results are required first   |
 
-## Prerequisites
+The router launches all ready tasks within capacity, reuses free agents, and supplies completed prerequisite results to the next workers. It rejects unknown roles, invalid dependencies, and duplicate task keys; unresolved cycles return blocked results.
 
-- **Node.js** ≥ 18 (see [`package.json`](package.json) `engines`)
-- **`@mozaik-ai/core` ^4.0.5** — upgrade or pin in [`package.json`](package.json) if you track a different minor
-- **OpenAI API key** — `runLoop` picks a provider from the model name; this starter uses **`gpt-5.4`**
+### Parallel execution, all the way down
 
----
+JigJoy's application loop executes **every tool call** in a model response and returns an output for every call ID. Tool batches overlap; different agent IDs have independent execution queues. Turns for the same agent remain ordered to protect its conversation context.
 
-## Setup
+Backend assistance has an isolated coordinator handoff so a worker can request help while the main coordinator is waiting. Result submission runs after the other tools in its batch. An accepted result finishes the worker turn; errors or missing submissions return a blocker instead of waiting for the full task timeout.
 
-1. Install dependencies:
+Real dependencies remain sequential. A design inspection can overlap a designer's proposal; implementing that proposal still waits for it.
 
-   ```bash
-   npm install
-   ```
+## 50 roles, selected for the job
 
-2. Configure credentials. Create a **`.env`** in the project directory (or a parent directory — the CLI searches upward from `cwd` and from the install location):
+| Area                        | Examples                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| Product and planning        | Product Manager, Business Analyst, Project Planner, Software Architect                 |
+| Design and experience       | Designer, UX Researcher, Accessibility, Design System, Brand Designer                  |
+| Engineering                 | Frontend, Backend, Fullstack, Mobile, Desktop, API Integration                         |
+| Quality and reliability     | Tester, Quality, Test Automation, Debugger, Refactoring, Performance                   |
+| Infrastructure and security | DevOps, Cloud, Infrastructure, CI/CD, Observability, Authentication, Security          |
+| Data and AI                 | Data Analyst, Data Engineer, Data Scientist, ML Engineer, AI Engineer, Prompt Engineer |
+| Content and growth          | Marketing, Copywriter, Social Media, Email Marketing, SEO, Content Strategist, Growth  |
 
-   ```env
-   OPENAI_API_KEY=sk-...
-   ```
+See [all 50 roles and their responsibilities](docs/AGENT_CATALOG_50.md). These are curated specializations of the same agent system, with distinct instructions and tools. They are not 50 separate models or a measured popularity ranking.
 
-3. Build TypeScript:
+### Files, processes and complete requirements
 
-   ```bash
-   npm run build
-   ```
+The factory includes native `get_workspace_info`, `list_files`, `read_file` and
+`write_file` tools. Source files are written through Node's filesystem APIs instead
+of Bash heredocs, so quoting, Unicode and paths with spaces do not depend on the shell.
+Finite commands have a timeout; long-running package server commands are redirected
+to `start_process`. Agents can inspect output, verify local endpoints with
+`http_request`, and clean up with `stop_process`.
 
----
+The coordinator loads a user-designated specification using `load_project_requirements`.
+Every worker receives the full original brief and follow-ups, plus prerequisite results;
+a short delegated task title no longer has to carry every requirement. Each running
+plan keeps its own brief snapshot. Rejected result submissions can be corrected;
+reported blockers cannot be hidden behind a contradictory done status.
 
-## Usage
+An optional `JIGJOY_WORKSPACE` environment variable selects the workspace root.
+Otherwise the factory uses the working directory. Source paths are resolved under
+that root and the actual OS/shell is reported before work begins. Technical tools
+still run with the host's access; this is not a security sandbox.
 
-Run the compiled CLI:
+### Prepared next exercise: Box Office
+
+The input is ready in [examples/box-office/specification.md](examples/box-office/specification.md).
+The [exercise instructions](examples/box-office/README.md) include a plan-only prompt
+and a later implementation prompt. This upgrade prepares JigJoy for that workflow;
+it does not claim a real-model Box Office generation has been completed.
+
+An integration fixture loads that complete input, dispatches a real role-agent handler,
+and writes a requirements receipt through the actual file tool. File/process tests
+start a real local server, inspect its output, call it over HTTP and stop it. Inference
+is deterministic in these tests. Native tools were exercised on Linux, including
+Unicode/space-containing paths; the Windows process-tree shutdown branch is not live-tested here.
+
+Twelve team recipes guide common tasks. The coordinator adapts them to scope instead of launching a fixed team for every request.
+
+## The control room
+
+The browser dashboard includes:
+
+- Chat with the coordinator.
+- Agent cards with live status and a count of working specialists.
+- Per-agent tasks, acceptance criteria, activity, results, and blockers.
+- A communication log showing assignments, handoffs, and replies.
+- Event replay when a browser reconnects or reloads.
+
+The Ink terminal UI remains available:
 
 ```bash
+npm run build
 node dist/cli.js
 ```
 
-Or link globally after a build (command matches the `"name"` field in `package.json`):
+## Built with
+
+**TypeScript · Mozaik AI Core · OpenAI · React · Vite · WebSocket · Ink · AVA**
+
+Mozaik supplies the participant, inference, tool, and event primitives. JigJoy adds the role catalog, task graph scheduler, concurrent application loop, coordination policy, and live dashboard.
+
+| Path                            | Responsibility                                                    |
+| ------------------------------- | ----------------------------------------------------------------- |
+| `source/session.ts`             | Session wiring and lazy specialist creation                       |
+| `source/concurrent-loop.ts`     | Complete tool batches, concurrent agents, ordered per-agent turns |
+| `source/terminal/agent.ts`      | Coordinator policy and validated incoming requests                |
+| `source/agents/role-catalog.ts` | 50 specialist definitions and tool access                         |
+| `source/agents/team-recipes.ts` | Example teams and dependency patterns                             |
+| `source/agents/task-router.ts`  | Capacity, dispatch, task graphs, handoffs, results and timeouts   |
+| `source/agents/role-agent.ts`   | Targeted specialist task execution                                |
+| `source/terminal/`              | Terminal command execution                                        |
+| `server/`                       | WebSocket backend, event translation and browser history          |
+| `shared/`                       | Browser events and role display metadata                          |
+| `web/src/`                      | React dashboard and event reducer                                 |
+| `docs/`                         | Role inventory, architecture details and upgrade instructions     |
+
+## Verify the build
+
+After installing both sets of dependencies:
 
 ```bash
-npm link
-cli-agent
+npm run check
 ```
 
-In the TUI: type a message and press **Enter**. Use **`/exit`**, **`/quit`**, **Escape**, or **Ctrl+C** to quit (Escape exits via Ink’s `useInput`).
+This builds the CLI, type-checks the server, runs agent and dashboard tests, and builds the web app. You can run each check separately:
 
-When the model calls **`run_command`**, output is also printed to **`stdout`** from the tool implementation (see [`source/terminal/tools.ts`](source/terminal/tools.ts)), which is useful for debugging alongside the chat transcript.
+```bash
+npm run build
+npm run typecheck
+npm run test:agents
+npm --prefix web run build
+```
 
----
+The concurrency regression test uses **real coordinator and specialist handlers with a deterministic inference runner**. It holds frontend, backend, and marketing active at the same time, checks that the dashboard reports three workers, completes one while the other two remain active, and allows testing only after all prerequisites finish.
 
-## Project layout
+Tests make no external model calls. They verify execution and state transitions; live model selection and provider behavior still need an API-backed demo run.
 
-| Path | Role |
-| --- | --- |
-| [`source/cli.tsx`](source/cli.tsx) | Entry: `dotenv`, `meow` help, `render(<App />)` |
-| [`source/app.tsx`](source/app.tsx) | Ink UI, local chat state, `createAgentSession` hooks |
-| [`source/runtime.ts`](source/runtime.ts) | `defineRuntime`, `RuntimeState`, `join` / `sendMessage` / `runLoop` |
-| [`source/session.ts`](source/session.ts) | Wiring: initialize runtime, join user, agent, observer |
-| [`source/ui-updater.ts`](source/ui-updater.ts) | Observer situation handlers → UI callbacks |
-| [`source/terminal/agent.ts`](source/terminal/agent.ts) | `createAgent` + `message.sent` → `runLoop` |
-| [`source/terminal/tools.ts`](source/terminal/tools.ts) | `Tool[]` for `run_command` |
-| [`source/terminal/terminal.ts`](source/terminal/terminal.ts) | `spawn`-based command runner |
-| [`source/terminal/command-result.ts`](source/terminal/command-result.ts) | Structured command result type |
+`npm test` also runs the repository-wide formatting and XO lint gates. The inherited checkout has separate formatting and lint compatibility issues; `npm run check` does not claim those gates pass.
 
----
+## Demo playbook
 
-## Development
+1. **Start clean.** Restart the backend and open the dashboard. Have a disposable target project ready.
+2. **Give an outcome.** Use the landing-page brief above, including the target path.
+3. **Point to the team.** Explain why those roles were selected and why unrelated roles stayed out.
+4. **Show overlap.** Independent workstreams should appear together in the working-specialist count. Exact timing depends on the model's plan and response times.
+5. **Follow a handoff.** Open frontend's task and show the design or contract results it received.
+6. **Close with evidence.** Show checks, changed files, and any honest blockers. Review the generated work before using it.
 
-| Script | Command |
-| --- | --- |
-| Build | `npm run build` |
-| Watch mode | `npm run dev` |
-| Lint / format check / tests | `npm test` |
+**Closing line:** “JigJoy turns a brief into a team you can watch, inspect, and direct.”
 
----
+## Current boundaries
 
-## Learning more
+- **One shared session per server.** Connected browsers see the same team and history. Restart the server to reset it; history is in memory.
+- **Bounded team size.** The default is 8 instantiated specialists per session and 2 instances per role. `createAgentSession` accepts `maxAgents` from 1 to 32 and frontend/backend role limits. Free agents are reused first. When a different role needs a full slot, the session retires an idle specialist; busy agents are never retired. Historical identity remains available for communication logs.
+- **Scoped tools.** Technical roles use the local terminal with the host process's access. Text-only roles work with provided information. A role name does not create a connected service or a security sandbox.
+- **Model-led planning.** The model chooses roles and dependencies; the router enforces execution of the submitted graph. There is no promise of identical plans or automatic speedup on every brief.
+- **Explicit publishing.** The coordinator requests GitHub finalization only when the user asks for it. PR creation requires Git and authenticated `gh`; merging is outside the finalizer's role.
 
-- **Package:** [`@mozaik-ai/core` on npm](https://www.npmjs.com/package/@mozaik-ai/core) — this repo pins **`^4.0.5`**; install or upgrade with `npm install @mozaik-ai/core@^4.0.5`.
-- **Examples:** [mozaik-examples](https://github.com/jigjoy-ai/mozaik-examples) — `terminal-agent`, situation handlers, `runLoop`, interception, and more.
-- The upstream README documents **`defineRuntime`**, **`createAgent`** / **`createHuman`**, **situation handlers**, and **`runLoop`**. This starter focuses on **one human + one agent + one observer** as a minimal base.
+## Credits and license
 
-To extend your CLI: add another **`createAgent`** or **`createHuman`**, **`join`** it to the same runtime, and register situation handlers for the events you care about (`message.sent`, `model.answer`, `function_call.started`, …).
-
----
-
-## License
-
-MIT — see [`package.json`](package.json).
+Built on the CLI Agent Starter and [Mozaik AI Core](https://www.npmjs.com/package/@mozaik-ai/core). MIT, as declared in [package.json](package.json).

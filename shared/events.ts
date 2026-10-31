@@ -1,15 +1,6 @@
-export type AgentKind =
-	| 'user'
-	| 'coordinator'
-	| 'frontend'
-	| 'backend'
-	| 'integration'
-	| 'tester'
-	| 'marketing'
-	| 'designer'
-	| 'devops'
-	| 'quality'
-	| 'pr_finalizer';
+import type {AgentRole} from '../source/agents/role-catalog.js';
+
+export type AgentKind = 'user' | 'coordinator' | AgentRole;
 
 export type AgentInfo = {id: string; name: string; kind: AgentKind};
 
@@ -30,6 +21,7 @@ export type TaskResult = {
 export type ServerEvent =
 	| {type: 'history'; events: ServerEvent[]}
 	| {type: 'agent.joined'; agent: AgentInfo}
+	| {type: 'agent.left'; agentId: string}
 	| {
 			type: 'agent.status';
 			agentId: string;
@@ -67,6 +59,6 @@ export type ServerEvent =
 			result: TaskResult;
 			at: number;
 	  }
-	| {type: 'error'; message: string; at: number};
+	| {type: 'error'; message: string; agentId?: string; at: number};
 
 export type ClientEvent = {type: 'send'; text: string};

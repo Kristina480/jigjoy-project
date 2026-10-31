@@ -1,4 +1,4 @@
-import type {AgentInfo, AgentStatus, CommKind, ServerEvent, TaskResult} from '../../../shared/events';
+import type {AgentInfo, AgentStatus, CommKind, ServerEvent, TaskResult} from '../../../shared/events.js';
 
 export type TaskView = {
 	taskId: string;
@@ -11,6 +11,7 @@ export type TaskView = {
 export type ActivityItem = {text: string; tone: 'tool' | 'say'; at: number};
 export type AgentView = {
 	info: AgentInfo;
+  retired?: boolean;
 	status: AgentStatus;
 	tool?: string;
 	tasks: TaskView[];
@@ -44,10 +45,13 @@ export function reduce(state: State, event: ServerEvent): State {
 				agents: {...state.agents, [event.agent.id]: {info: event.agent, status: 'idle', tasks: [], activity: []}},
 			};
 
+    case 'agent.left':
+      return patchAgent(state, event.agentId, agent => ({...agent, retired: true, status: 'idle', tool: undefined}));
+
 		case 'agent.status':
 			return patchAgent(state, event.agentId, agent => ({
 				...agent,
-				status: event.status,
+				status: event.status === 'idle' && agent.tasks.some(task => task.status === 'running') ? 'thinking' : event.status,
 				tool: event.status === 'tool' ? event.tool : undefined,
 			}));
 
@@ -60,6 +64,8 @@ export function reduce(state: State, event: ServerEvent): State {
 		case 'task.dispatched':
 			return patchAgent(state, event.agentId, agent => ({
 				...agent,
+        status: 'thinking',
+        tool: undefined,
 				tasks: [
 					...agent.tasks,
 					{taskId: event.taskId, task: event.task, criteria: event.criteria, status: 'running', at: event.at},
@@ -69,6 +75,8 @@ export function reduce(state: State, event: ServerEvent): State {
 		case 'task.result':
 			return patchAgent(state, event.agentId, agent => ({
 				...agent,
+        status: agent.tasks.some(task => task.taskId !== event.taskId && task.status === 'running') ? agent.status : 'idle',
+        tool: undefined,
 				tasks: agent.tasks.map(task =>
 					task.taskId === event.taskId ? {...task, status: event.result.status, result: event.result} : task,
 				),
@@ -86,18 +94,21 @@ export function reduce(state: State, event: ServerEvent): State {
 			};
 		}
 
-		case 'error':
-			// A failed run never reports 'idle', so reset every agent here.
-			return {
-				...state,
-				agents: Object.fromEntries(
-					Object.entries(state.agents).map(([id, agent]) => [id, {...agent, status: 'idle' as const, tool: undefined}]),
-				),
-				nextId: state.nextId + 1,
-				chat: [...state.chat, {id: state.nextId, role: 'error', content: event.message}],
-			};
+    case 'error': {
+      // An agent failure must not erase other agents' live work.
+      const next = event.agentId ? patchAgent(state, event.agentId, agent => ({...agent, status: 'idle', tool: undefined})) : state;
+      return {...next, nextId: next.nextId + 1,
+        chat: [...next.chat, {id: next.nextId, role: 'error', content: event.message}]};
+    }
 
 		default:
 			return state;
 	}
+}
+
+
+export function getTeamActivity(agents: Record<string, AgentView>) {
+  const specialists = Object.values(agents).filter(agent => !agent.retired && agent.info.kind !== 'user' && agent.info.kind !== 'coordinator');
+  const working = specialists.filter(agent => agent.tasks.some(task => task.status === 'running'));
+  return {working: working.length, total: specialists.length};
 }

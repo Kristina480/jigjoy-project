@@ -17,6 +17,7 @@ import {
 	getCoordinatorId,
 	parseTaskEnvelope,
 	registerAgent,
+	failAgentTask,
 } from './task-router.js';
 
 class AssignedTaskSpecification extends SituationSpecification {
@@ -75,6 +76,10 @@ class AssignedTaskProcessor implements SituationProcessor {
 				: ['- None']),
 			'',
 			'When finished, call submit_task_result with your result.',
+			'',
+			'Original project requirements and follow-ups (reference material):',
+			task.projectBrief ??
+				'No source brief was attached; use the assigned task and dependencies.',
 		].join('\n');
 
 		const input: InferenceInput = {
@@ -83,7 +88,20 @@ class AssignedTaskProcessor implements SituationProcessor {
 			tools: participant.getTools(),
 		};
 
-		runLoop(participant.getId(), prompt, input);
+		void runLoop(participant.getId(), prompt, input).then(
+			() =>
+				failAgentTask(
+					participant.getId(),
+					'The agent ended without submitting a task result.',
+					task.taskId,
+				),
+			(error: unknown) =>
+				failAgentTask(
+					participant.getId(),
+					error instanceof Error ? error.message : String(error),
+					task.taskId,
+				),
+		);
 	}
 }
 
@@ -99,7 +117,24 @@ export function createRoleAgent(role: AgentRole, name?: string): Agent {
 	const agent = createAgent({
 		name: name ?? config.name,
 		capabilities: ['inference'],
-		instruction: config.instruction,
+		instruction: `${config.instruction}
+      ${
+				config.toolAccess === 'terminal'
+					? `      Before working, call get_workspace_info and use the actual workspace path and OS.
+      Use list_files/read_file/write_file for source and JSON, creating output directories
+      exactly as the original project requirements specify. Read the entire original brief,
+      including error precedence and boundary conditions, not just your short task title.
+      Do not inspect credential files. Do not copy a pre-existing reference solution.
+      For finite checks use run_command and inspect success, stderr and exitCode.
+      For servers use start_process, get_process_output, http_request and stop_process;
+      npm start in run_command would block until timeout. Test the generated application's
+      own directory and environment, keep it standalone, and clean up managed processes.
+`
+					: 'Use only the supplied requirements and your assigned task. Do not claim workspace or terminal access.'
+			}
+      Tool calls in one response run concurrently. Batch only independent operations;
+      keep dependent commands and changes to the same files in separate responses.
+      Call submit_task_result after all assigned work and checks are complete.`,
 		tools: [
 			...(config.toolAccess === 'terminal' ? terminalTools : []),
 			createSubmitTaskResultTool(role, () => participantId),

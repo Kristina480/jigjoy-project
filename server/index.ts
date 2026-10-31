@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import http from 'node:http';
 import {WebSocket, WebSocketServer} from 'ws';
+import {stopManagedProcesses} from '../source/terminal/tools.js';
 import {createAgentSession} from '../source/session.js';
 import type {ClientEvent, ServerEvent} from '../shared/events.js';
 import {createTranslator} from './translate.js';
@@ -15,11 +16,12 @@ const roster: ServerEvent[] = [];
 const history: ServerEvent[] = [];
 
 function emit(event: ServerEvent) {
-	if (event.type === 'agent.joined') {
+	if (event.type === 'agent.joined' || event.type === 'agent.left') {
 		roster.push(event);
 	} else {
 		history.push(event);
-		if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+		if (history.length > MAX_HISTORY)
+			history.splice(0, history.length - MAX_HISTORY);
 	}
 
 	const data = JSON.stringify(event);
@@ -60,7 +62,12 @@ const wss = new WebSocketServer({server, path: '/ws'});
 
 wss.on('connection', socket => {
 	clients.add(socket);
-	socket.send(JSON.stringify({type: 'history', events: [...roster, ...history]} satisfies ServerEvent));
+	socket.send(
+		JSON.stringify({
+			type: 'history',
+			events: [...roster, ...history],
+		} satisfies ServerEvent),
+	);
 
 	socket.on('message', raw => {
 		try {
@@ -79,3 +86,13 @@ wss.on('connection', socket => {
 server.listen(PORT, () => {
 	console.log(`[server] listening on http://localhost:${PORT} (ws path: /ws)`);
 });
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+	process.once(signal, () => {
+		void stopManagedProcesses().finally(() => {
+			for (const socket of clients) socket.close();
+			wss.close();
+			server.close(() => process.exit(0));
+		});
+	});
+}

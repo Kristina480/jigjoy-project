@@ -1,7 +1,14 @@
 import test from 'ava';
 import {createHuman} from '@mozaik-ai/core';
-import {EnvironmentState, initializeRuntime, join} from '../runtime.js';
+import {
+	EnvironmentState,
+	initializeRuntime,
+	join,
+	leave,
+	resolveParticipant,
+} from '../runtime.js';
 import {createRuntimeObserver} from '../runtime-observer.js';
+import type {TaskEnvelope} from './task-router.js';
 
 import {
 	createSubmitTaskResultTool,
@@ -10,6 +17,8 @@ import {
 	ensureFreeAgent,
 	setCoordinatorId,
 	getAgentAvailability,
+	recordProjectMessage,
+	getProjectBrief,
 	getFreeAgentCount,
 	getUnresolvedDependencies,
 	parseHelpRequestEnvelope,
@@ -17,6 +26,8 @@ import {
 	registerAgent,
 	resetTaskRouter,
 } from './task-router.js';
+
+initializeRuntime({state: new EnvironmentState()});
 
 test('parseTaskEnvelope accepts a task targeted to one registered role agent', t => {
 	const task = {
@@ -202,7 +213,6 @@ test.serial(
 		t.timeout(10000);
 		resetTaskRouter();
 		t.teardown(() => resetTaskRouter());
-		initializeRuntime({state: new EnvironmentState()});
 		const coordinator = createHuman({
 			name: 'Test Coordinator',
 			capabilities: [],
@@ -221,7 +231,7 @@ test.serial(
 				const {message} = event.payload as {message: string};
 				const task = parseTaskEnvelope(message);
 				if (!task) return;
-				received.push(task.task);
+				received.push(task.task.split('\n')[0]!);
 				// Delay completion so simultaneous dispatches must reserve distinct workers.
 				setTimeout(() => {
 					void createSubmitTaskResultTool(
@@ -299,6 +309,306 @@ test.serial(
 		);
 		t.true(
 			received.indexOf('Connect UI parts') > received.indexOf('Second UI part'),
+		);
+	},
+);
+
+function createSyntheticTeam(blockDesigner = false) {
+	resetTaskRouter();
+	const coordinator = createHuman({
+		name: 'Team Test Coordinator',
+		capabilities: [],
+		handlers: [],
+	});
+	join(coordinator);
+	setCoordinatorId(coordinator.getId());
+	const dispatched: TaskEnvelope[] = [];
+	const completed: string[] = [];
+	const rosters: string[][] = [];
+	join(
+		createRuntimeObserver(event => {
+			if (
+				event.type !== 'message.sent' ||
+				event.producerId !== coordinator.getId()
+			)
+				return;
+			const task = parseTaskEnvelope(
+				(event.payload as {message: string}).message,
+			);
+			if (!task) return;
+			dispatched.push(task);
+			rosters.push(getAgentAvailability().map(agent => agent.role));
+			setTimeout(() => {
+				const blocked = blockDesigner && task.role === 'designer';
+				completed.push(task.role);
+				void createSubmitTaskResultTool(
+					task.role,
+					() => task.targetAgentId,
+				).invoke({
+					taskId: task.taskId,
+					status: blocked ? 'blocked' : 'done',
+					summary:
+						task.role === 'designer'
+							? 'Design specification: violet buttons, visible focus, 24px spacing.'
+							: `${task.role} finished`,
+					filesChanged: [],
+					checks: [],
+					blockers: blocked ? ['Missing design requirement.'] : [],
+				});
+			}, 10);
+		}),
+	);
+	configureAgentProvisioning((role, name) => {
+		const worker = createHuman({name, capabilities: [], handlers: []});
+		registerAgent(role, worker.getId());
+		join(worker);
+	});
+	const plan = createDelegationTools().find(
+		tool => tool.name === 'delegate_team_plan',
+	)!;
+	return {plan, dispatched, completed, rosters};
+}
+
+const designTeamTasks = [
+	{
+		key: 'design',
+		role: 'designer',
+		task: 'Specify screen design',
+		acceptanceCriteria: [],
+		dependsOn: [],
+	},
+	{
+		key: 'ui',
+		role: 'frontend',
+		task: 'Implement screen design',
+		acceptanceCriteria: [],
+		dependsOn: ['design'],
+	},
+	{
+		key: 'check',
+		role: 'tester',
+		task: 'Verify screen design',
+		acceptanceCriteria: [],
+		dependsOn: ['ui'],
+	},
+];
+
+test.serial(
+	'design team passes the actual design to frontend and creates workers in dependency order',
+	async t => {
+		t.timeout(10000);
+		t.teardown(() => resetTaskRouter());
+		const {plan, dispatched, completed, rosters} = createSyntheticTeam();
+		const result = JSON.parse(
+			await plan.invoke({tasks: designTeamTasks, completedDependencies: []}),
+		);
+		t.is(result.status, 'done');
+		t.deepEqual(
+			dispatched.map(task => task.role),
+			['designer', 'frontend', 'tester'],
+		);
+		t.deepEqual(completed, ['designer', 'frontend', 'tester']);
+		t.deepEqual(rosters, [
+			['designer'],
+			['designer', 'frontend'],
+			['designer', 'frontend', 'tester'],
+		]);
+		t.true(
+			dispatched[1]!.task.includes(
+				'violet buttons, visible focus, 24px spacing',
+			),
+		);
+		t.true(dispatched[2]!.task.includes('frontend finished'));
+		t.false(
+			getAgentAvailability().some(
+				agent => agent.role === 'backend' || agent.role === 'marketing',
+			),
+		);
+	},
+);
+
+test.serial(
+	'blocked design never creates frontend or tester, even when caller marks it completed',
+	async t => {
+		t.timeout(10000);
+		t.teardown(() => resetTaskRouter());
+		const {plan, dispatched} = createSyntheticTeam(true);
+		const result = JSON.parse(
+			await plan.invoke({
+				tasks: designTeamTasks,
+				completedDependencies: ['design', 'ui'],
+			}),
+		);
+		t.is(result.status, 'blocked');
+		t.is(result.results.ui.status, 'blocked');
+		t.is(result.results.check.status, 'blocked');
+		t.deepEqual(
+			dispatched.map(task => task.role),
+			['designer'],
+		);
+		t.deepEqual(
+			getAgentAvailability().map(agent => agent.role),
+			['designer'],
+		);
+	},
+);
+
+test.serial(
+	'team plans reject unknown roles and dependencies without creating workers',
+	async t => {
+		resetTaskRouter();
+		t.teardown(() => resetTaskRouter());
+		const plan = createDelegationTools().find(
+			tool => tool.name === 'delegate_team_plan',
+		)!;
+		for (const tasks of [
+			[{...designTeamTasks[0], role: 'invented_role'}],
+			[{...designTeamTasks[0], dependsOn: ['unknown']}],
+			[designTeamTasks[0], designTeamTasks[0]],
+			[],
+		]) {
+			const result = JSON.parse(
+				await plan.invoke({tasks, completedDependencies: []}),
+			);
+			t.is(result.status, 'blocked');
+			t.deepEqual(getAgentAvailability(), []);
+		}
+	},
+);
+
+test.serial(
+	'team plan detects dependency cycles without creating workers',
+	async t => {
+		resetTaskRouter();
+		t.teardown(() => resetTaskRouter());
+		const plan = createDelegationTools().find(
+			tool => tool.name === 'delegate_team_plan',
+		)!;
+		const result = JSON.parse(
+			await plan.invoke({
+				tasks: [{...designTeamTasks[0], dependsOn: ['ui']}, designTeamTasks[1]],
+				completedDependencies: [],
+			}),
+		);
+		t.is(result.status, 'blocked');
+		t.deepEqual(getAgentAvailability(), []);
+	},
+);
+
+test.serial(
+	'every dependent task receives the same unabridged source brief snapshot',
+	async t => {
+		t.timeout(10000);
+		t.teardown(() => resetTaskRouter());
+		const {plan, dispatched} = createSyntheticTeam();
+		const specification =
+			'Box Office API\nHOLD_SECONDS=600\nAuth before input\nSix-ticket cap\nFIFO waitlist\nRevenue report\n' +
+			'Long requirement. '.repeat(1000);
+		recordProjectMessage(specification);
+		const pending = plan.invoke({
+			tasks: designTeamTasks,
+			completedDependencies: [],
+		});
+		recordProjectMessage(
+			'A later queued follow-up must not rewrite the plan already running.',
+		);
+		const result = JSON.parse(await pending);
+		t.is(result.status, 'done');
+		t.true(dispatched.every(task => task.projectBrief === specification));
+		t.true(getProjectBrief().includes('later queued follow-up'));
+		resetTaskRouter();
+		t.is(getProjectBrief(), '');
+	},
+);
+
+test.serial(
+	'idle role instances can be retired at capacity while busy workers remain protected',
+	async t => {
+		t.timeout(10000);
+		t.teardown(() => resetTaskRouter());
+		const {plan, dispatched} = createSyntheticTeam();
+		const retired: string[] = [];
+		configureAgentProvisioning(
+			(role, name) => {
+				const worker = createHuman({name, capabilities: [], handlers: []});
+				registerAgent(role, worker.getId());
+				join(worker);
+			},
+			1,
+			{},
+			id => {
+				retired.push(id);
+				leave(resolveParticipant(id));
+			},
+		);
+		const pending = plan.invoke({
+			tasks: designTeamTasks,
+			completedDependencies: [],
+		});
+		t.false(ensureFreeAgent('marketing'));
+		const result = JSON.parse(await pending);
+		t.is(result.status, 'done');
+		t.deepEqual(
+			dispatched.map(task => task.role),
+			['designer', 'frontend', 'tester'],
+		);
+		t.is(retired.length, 2);
+		t.deepEqual(
+			getAgentAvailability().map(agent => agent.role),
+			['tester'],
+		);
+	},
+);
+
+test.serial(
+	'malformed task plans return blockers rather than throwing',
+	async t => {
+		resetTaskRouter();
+		t.teardown(() => resetTaskRouter());
+		const plan = createDelegationTools().find(
+			tool => tool.name === 'delegate_team_plan',
+		)!;
+		for (const args of [
+			{tasks: null, completedDependencies: []},
+			{tasks: [{key: 42}], completedDependencies: []},
+			{tasks: [null], completedDependencies: []},
+		]) {
+			const result = JSON.parse(await plan.invoke(args));
+			t.is(result.status, 'blocked');
+		}
+		t.deepEqual(getAgentAvailability(), []);
+	},
+);
+
+test.serial(
+	'a reported blocker overrides a contradictory done status and stops dependent work',
+	async t => {
+		t.timeout(10000);
+		t.teardown(() => resetTaskRouter());
+		const {plan, dispatched} = createSyntheticTeam();
+		const pending = plan.invoke({
+			tasks: designTeamTasks,
+			completedDependencies: [],
+		});
+		const assigned = dispatched[0]!;
+		const accepted = await createSubmitTaskResultTool(
+			assigned.role,
+			() => assigned.targetAgentId,
+		).invoke({
+			taskId: assigned.taskId,
+			status: 'done',
+			summary: 'Review found a problem.',
+			filesChanged: [],
+			checks: [],
+			blockers: ['A required check failed.'],
+		});
+		t.true(accepted.accepted);
+		const result = JSON.parse(await pending);
+		t.is(result.status, 'blocked');
+		t.is(result.results.design.status, 'blocked');
+		t.deepEqual(
+			dispatched.map(task => task.role),
+			['designer'],
 		);
 	},
 );
