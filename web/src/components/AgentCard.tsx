@@ -1,74 +1,43 @@
-import {KIND_META, formatTime, statusLabel} from '../lib/agents';
+import type {KeyboardEvent} from 'react';
+import {KIND_META, statusLabel} from '../lib/agents';
 import type {AgentView} from '../state/store';
 
-export default function AgentCard({agent}: {agent: AgentView}) {
+type Props = {agent: AgentView; selected: boolean; onSelect: () => void};
+
+export default function AgentCard({agent, selected, onSelect}: Props) {
 	const meta = KIND_META[agent.info.kind];
-	const task = agent.tasks.at(-1);
-	const earlier = agent.tasks.length - 1;
-	const recent = agent.activity.slice(-4);
+	const recent = agent.activity.slice(-3);
+
+	const onKeyDown = (event: KeyboardEvent) => {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			onSelect();
+		}
+	};
 
 	return (
-		<article className={`card ${agent.status !== 'idle' ? 'is-active' : ''}`}>
+		<div
+			role="button"
+			tabIndex={0}
+			aria-pressed={selected}
+			onClick={onSelect}
+			onKeyDown={onKeyDown}
+			className={`card st-${agent.status} ${agent.status !== 'idle' ? 'is-active' : ''} ${selected ? 'is-selected' : ''}`}
+		>
 			<header className="card-head">
 				<div className="card-title">
 					<strong>{meta.label}</strong>
 					<small>{agent.info.name}</small>
 				</div>
-				<span className={`chip chip-${agent.status}`}>{statusLabel(agent.status, agent.tool)}</span>
+				<span className="chip">{statusLabel(agent.status, agent.tool)}</span>
 			</header>
 
-			{task && (
-				<div className="task">
-					<div className="task-head">
-						<span className={`badge badge-${task.status}`}>{task.status}</span>
-						<span className="muted">
-							task {earlier > 0 && `(+${earlier} earlier)`} · {formatTime(task.at)}
-						</span>
-					</div>
-					<p className="clamp">{task.task}</p>
-					{task.criteria.length > 0 && (
-						<details>
-							<summary>{task.criteria.length} acceptance criteria</summary>
-							<ul>
-								{task.criteria.map(item => (
-									<li key={item}>{item}</li>
-								))}
-							</ul>
-						</details>
-					)}
-				</div>
-			)}
-
-			{task?.result && (
-				<div className="result">
-					<p>{task.result.summary}</p>
-					<ResultList title="Files" items={task.result.filesChanged} />
-					<ResultList title="Checks" items={task.result.checks} />
-					<ResultList title="Blockers" items={task.result.blockers} danger />
-				</div>
-			)}
-
-			{recent.length > 0 && (
-				<ul className="activity">
-					{recent.map((item, index) => (
-						<li key={`${item.at}-${index}`} className={`tone-${item.tone}`}>
-							{item.text}
-						</li>
-					))}
-				</ul>
-			)}
-		</article>
-	);
-}
-
-function ResultList({title, items, danger}: {title: string; items: string[]; danger?: boolean}) {
-	if (items.length === 0) return null;
-	return (
-		<div className={`result-list ${danger ? 'danger' : ''}`}>
-			<span>{title}</span>
-			<ul>
-				{items.map(item => (
-					<li key={item}>{item}</li>
+			<ul className="activity">
+				{recent.length === 0 && <li className="tone-empty">No activity yet</li>}
+				{recent.map((item, index) => (
+					<li key={`${item.at}-${index}`} className={`tone-${item.tone}`}>
+						{item.text}
+					</li>
 				))}
 			</ul>
 		</div>
